@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #16181d;
+  --ink-2: #545862;
+  --ink-3: #8a8f99;
+  --line: #e4e6ea;
+  --accent: #2a78d6;
+  --good: #0c8a0c;
+  --bad: #d03b3b;
+  --warn: #b7791f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+  font-feature-settings: "palt";
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,16 @@
+# 部品（npm install で自動で入るもの）
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# ★ 顧客名・住所などを含むため、GitHub には絶対に上げないファイル
+excel/*
+!excel/README.md
+data/*
+!data/README.md
+
+.DS_Store
+.env*
+npm-debug.log*
