@@ -57,10 +57,12 @@ export default function DataPage() {
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-xs text-ink-3">※「営業管理_7-9月_5人_KPI確定版.xlsx」は今回受け取っていないため使っていません。</p>
+        {!ds.sourceFiles.some((f) => /KPI確定版/.test(f.fileName)) && (
+          <p className="mt-3 text-xs text-ink-3">※「KPI確定版」の Excel が excel フォルダにないため、営業管理システムの値を確定KPIとして使っています。</p>
+        )}
       </Section>
 
-      <Section title="取り込んだ確定KPI" desc="行動・GET・ポイントは営業管理システムの確定値。打電・アポは月末時点の記録です。">
+      <Section title="取り込んだ確定KPI" desc="行動・GET・ポイントはKPI確定版（なければ営業管理システム）の値。打電・アポは営業管理システムの月末時点の記録です。">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="border-b border-line text-xs text-ink-3">

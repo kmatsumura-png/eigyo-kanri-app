@@ -67,22 +67,59 @@ function readBook(file: string, sheets?: string[]): XLSX.WorkBook {
 function findFiles() {
   if (!fs.existsSync(EXCEL_DIR)) throw new Error("excel フォルダがありません");
   const files = fs.readdirSync(EXCEL_DIR).filter((f) => /\.xlsx$/i.test(f) && !f.startsWith("~$"));
-  const pick = (re: RegExp, label: string) => {
+  const pick = (re: RegExp, label: string, optional = false) => {
     const hit = files.filter((f) => re.test(f.normalize("NFC")));
+    if (hit.length === 0 && optional) return null;
     if (hit.length === 0) throw new Error(`「${label}」の Excel が excel フォルダにありません`);
     if (hit.length > 1) throw new Error(`「${label}」の Excel が複数あります: ${hit.join(", ")}`);
     return path.join(EXCEL_DIR, hit[0]);
   };
+  const need = (re: RegExp, label: string) => pick(re, label) as string;
   const monthly: Record<MonthKey, string> = {};
   for (const m of MONTHS) {
     const [y, mm] = m.split("-");
-    monthly[m] = pick(new RegExp(`評価基準.*${y}年0?${Number(mm)}月`), `評価基準用数値集計 ${y}年${Number(mm)}月`);
+    monthly[m] = need(new RegExp(`評価基準.*${y}年0?${Number(mm)}月`), `評価基準用数値集計 ${y}年${Number(mm)}月`);
   }
   return {
-    system: pick(/営業管理システム/, "営業管理システム"),
-    schedule: pick(/行動予定表/, "トップチーム行動予定表"),
+    system: need(/営業管理システム/, "営業管理システム"),
+    schedule: need(/行動予定表/, "トップチーム行動予定表"),
+    // KPI確定版は無くても動く（あれば行動数・GET数・ポイントの最優先データとして使う）
+    confirmed: pick(/KPI確定版/, "KPI確定版", true),
     monthly,
   };
+}
+
+// ---------- 2-0. KPI確定版（行動数・GET数・ポイントの確定値） ----------
+interface ConfirmedRow {
+  memberId: string;
+  months: Record<MonthKey, { actions: number | null; gets: number | null; rate: number | null; points: number | null }>;
+  total: { actions: number | null; gets: number | null; rate: number | null; points: number | null };
+}
+function readConfirmed(file: string): ConfirmedRow[] {
+  const wb = readBook(file);
+  const sheet = rows(wb, wb.SheetNames[0]);
+  const hIdx = sheet.findIndex((r) => r.some((v) => /行動数/.test(str(v))));
+  if (hIdx < 0) throw new Error(`${path.basename(file)} に「行動数」の見出しがありません`);
+  const h = sheet[hIdx].map((v) => str(v).replace(/\s+/g, ""));
+  const col = (name: string) => h.indexOf(name.replace(/\s+/g, ""));
+  const out: ConfirmedRow[] = [];
+  for (const r of sheet.slice(hIdx + 1)) {
+    const who = str(r[0]);
+    const mem = MEMBERS.find((m) => m.short === who || m.name === who);
+    if (!mem) continue;
+    const get = (name: string) => (col(name) >= 0 ? num(r[col(name)]) : null);
+    const months: ConfirmedRow["months"] = {};
+    for (const m of MONTHS) {
+      const n = Number(m.slice(5, 7));
+      months[m] = { actions: get(`${n}月 行動数`), gets: get(`${n}月 GET`), rate: get(`${n}月 契約率`), points: get(`${n}月 pt`) };
+    }
+    out.push({
+      memberId: mem.id,
+      months,
+      total: { actions: get("3ヶ月 行動数"), gets: get("3ヶ月 GET"), rate: get("3ヶ月 契約率"), points: get("3ヶ月 pt合計") },
+    });
+  }
+  return out;
 }
 
 // ---------- 2. 営業管理システム（確定KPI） ----------
@@ -294,6 +331,7 @@ function main() {
   console.log("読み込むファイル:");
   console.log("  営業管理システム :", path.basename(files.system));
   console.log("  行動予定表       :", path.basename(files.schedule));
+  console.log("  KPI確定版        :", files.confirmed ? path.basename(files.confirmed) : "（なし）");
   for (const m of MONTHS) console.log(`  評価基準 ${monthLabel(m)}      :`, path.basename(files.monthly[m]));
 
   const issues: DataIssue[] = [];
@@ -393,6 +431,69 @@ function main() {
     }
   }
 
+  // KPI確定版があれば、行動数・GET数・ポイントはそちらを最優先にする。
+  // 営業管理システムと違う場合は「データ不一致」として記録する
+  if (files.confirmed) {
+    const conf = readConfirmed(files.confirmed);
+    const src = `KPI確定版（${path.basename(files.confirmed)}）`;
+    let mismatch = 0;
+    const label = { actions: "行動数", gets: "GET数", points: "ポイント" } as const;
+    for (const mem of MEMBERS) {
+      const c = conf.find((x) => x.memberId === mem.id);
+      if (!c) {
+        issues.push({ level: "要確認", memberId: mem.id, title: "KPI確定版にこの人の行がありません", detail: "営業管理システムの値を使っています。" });
+        continue;
+      }
+      for (const m of MONTHS) {
+        const k = kpis.find((x) => x.memberId === mem.id && x.month === m)!;
+        const v = c.months[m];
+        for (const f of ["actions", "gets", "points"] as const) {
+          const cv = v[f];
+          if (cv === null) continue;
+          if (cv !== k[f]) {
+            mismatch++;
+            issues.push({
+              level: "データ不一致",
+              memberId: mem.id,
+              month: m,
+              title: `${label[f]}が「KPI確定版」と「営業管理システム」で違います`,
+              detail: `KPI確定版: ${cv} ／ 営業管理システム: ${k[f]}。KPI確定版の値を使っています。`,
+            });
+            k[f] = cv;
+          }
+          k.sources[label[f]] = src;
+        }
+        if (v.rate !== null && v.actions && v.gets !== null && Math.abs(v.rate - v.gets / v.actions) > 0.0005) {
+          issues.push({
+            level: "要確認",
+            memberId: mem.id,
+            month: m,
+            title: "KPI確定版の契約率が GET ÷ 行動数 と合いません",
+            detail: `KPI確定版の契約率: ${(v.rate * 100).toFixed(1)}% ／ 計算値: ${((v.gets / v.actions) * 100).toFixed(1)}%。アプリでは計算値を表示しています。`,
+          });
+        }
+      }
+      // 3か月合計の確認
+      const mine = kpis.filter((x) => x.memberId === mem.id);
+      const sum = (f: "actions" | "gets" | "points") => mine.reduce((a, x) => a + x[f], 0);
+      for (const [f, cv] of [["actions", c.total.actions], ["gets", c.total.gets], ["points", c.total.points]] as const) {
+        if (cv !== null && cv !== sum(f)) {
+          issues.push({
+            level: "要確認",
+            memberId: mem.id,
+            title: `KPI確定版の3ヶ月${label[f]}が、月別の合計と合いません`,
+            detail: `3ヶ月の欄: ${cv} ／ 7〜9月の合計: ${sum(f)}`,
+          });
+        }
+      }
+    }
+    issues.unshift({
+      level: "参考",
+      title: mismatch === 0 ? "KPI確定版と営業管理システムの数字は全員・全月で一致しました" : `KPI確定版と営業管理システムで ${mismatch} か所の違いがあります`,
+      detail: "行動数・GET数・ポイントを照合しました。",
+    });
+  }
+
   // 月別の評価基準ファイル
   const contracts: Contract[] = [];
   for (const m of MONTHS) {
@@ -468,8 +569,17 @@ function main() {
   }
 
   const sourceFiles: SourceFile[] = [
+    ...(files.confirmed
+      ? [
+          {
+            role: "① 確定KPI（最優先）",
+            fileName: path.basename(files.confirmed),
+            used: "7〜9月の行動数・GET数・ポイント（営業管理システムと照合）",
+          },
+        ]
+      : []),
     {
-      role: "① 確定KPI（最優先）",
+      role: files.confirmed ? "① 確定KPI（営業管理システム）" : "① 確定KPI（最優先）",
       fileName: path.basename(files.system),
       used: `「月次実績（4月〜）」→ 行動数・GET数・ポイント（過去月）／「集計DB」→ ${sys.dbMonth ? monthLabel(sys.dbMonth) : "最新月"}の全項目（打電数・接触数・アポ数など）／「履歴ログ」→ 過去月の打電数・アポ数（月末記録）`,
     },
