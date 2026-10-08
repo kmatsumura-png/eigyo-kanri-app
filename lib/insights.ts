@@ -272,3 +272,81 @@ export function teamSummary(ds: Dataset, period: Period): Summary {
 
   return { hot, down, coaching, team };
 }
+
+// ---------- 個人の「強み」と「改善すべき点」 ----------
+export interface StrengthReport {
+  strengths: string[]; // この人は何が強いのか
+  improvements: string[]; // どこを改善すべきか
+}
+
+/** 強みとみなす基準：チーム平均の 105% 以上 */
+const STRONG_LINE = 1.05;
+
+export function strengthReport(ds: Dataset, memberId: string, period: Period): StrengthReport {
+  const months = period === "all" ? MONTHS : [period];
+  const s = statsFor(ds, [memberId], months);
+  const t = teamPerPerson(ds, months);
+  const n = months.length;
+  const per = n > 1 ? "月" : "";
+  const strengths: string[] = [];
+  const improvements: string[] = [];
+  const cnt = (v: number | null, unit: string) => (v === null ? "—" : `${per}${fmtNum(v / n, n > 1 ? 1 : 0)}${unit}`);
+
+  const rateLow = s.contractRate !== null && t.contractRate !== null && s.contractRate < t.contractRate * ISSUE_LINE;
+  const actionsHigh = s.actions >= t.actions * STRONG_LINE;
+
+  // 行動数と契約率（組み合わせで見る）
+  if (actionsHigh && rateLow) {
+    improvements.push(
+      `行動数は多い（${cnt(s.actions, "件")}／平均${cnt(t.actions, "件")}）が、GET率が低い（${fmtPct(s.contractRate)}／平均${fmtPct(t.contractRate)}）。商談後の成約に課題がある可能性があります。`,
+    );
+  } else {
+    if (actionsHigh) strengths.push(`行動数がチーム平均より多い（${cnt(s.actions, "件")}／平均${cnt(t.actions, "件")}）`);
+    else if (s.actions < t.actions * 0.95) improvements.push(`行動数がチーム平均より少ない（${cnt(s.actions, "件")}／平均${cnt(t.actions, "件")}）`);
+    if (s.contractRate !== null && t.contractRate !== null) {
+      if (s.contractRate >= t.contractRate)
+        strengths.push(`契約率がチーム平均以上（${fmtPct(s.contractRate)}／平均${fmtPct(t.contractRate)}）`);
+      else if (rateLow) improvements.push(`契約率がチーム平均を下回っている（${fmtPct(s.contractRate)}／平均${fmtPct(t.contractRate)}）`);
+    }
+  }
+
+  // GET数
+  if (s.gets >= t.gets * STRONG_LINE) strengths.push(`GET数がチーム平均より多い（${cnt(s.gets, "件")}／平均${cnt(t.gets, "件")}）`);
+  else if (s.gets < t.gets * ISSUE_LINE) improvements.push(`GET数がチーム平均より少ない（${cnt(s.gets, "件")}／平均${cnt(t.gets, "件")}）`);
+
+  // アポ数
+  if (s.appts !== null && t.appts !== null) {
+    if (s.appts >= t.appts * STRONG_LINE) strengths.push(`自分で取るアポ数が多い（${cnt(s.appts, "件")}／平均${cnt(t.appts, "件")}）`);
+    else if (s.appts < t.appts * ISSUE_LINE) improvements.push(`自分で取るアポ数が少ない（${cnt(s.appts, "件")}／平均${cnt(t.appts, "件")}）`);
+  }
+
+  // 平均単価（金額が確定した契約が2件以上あるときだけ判断）
+  const pendingNote = s.pendingCount ? `。金額要確認${s.pendingCount}件は含まず` : "";
+  if (s.amountCount >= 2 && s.unitPrice !== null && t.unitPrice !== null) {
+    if (s.unitPrice >= t.unitPrice * STRONG_LINE) strengths.push(`平均単価が高い（${fmtMan(s.unitPrice)}／平均${fmtMan(t.unitPrice)}${pendingNote}）`);
+    else if (s.unitPrice < t.unitPrice * ISSUE_LINE) improvements.push(`平均単価が低い（${fmtMan(s.unitPrice)}／平均${fmtMan(t.unitPrice)}${pendingNote}）`);
+  }
+
+  // ポイント
+  if (s.points >= t.points * STRONG_LINE) strengths.push(`ポイントがチーム平均より多い（${cnt(s.points, "pt")}／平均${cnt(t.points, "pt")}）`);
+  else if (s.points < t.points * ISSUE_LINE) improvements.push(`ポイントがチーム平均より少ない（${cnt(s.points, "pt")}／平均${cnt(t.points, "pt")}）`);
+
+  // 前月との比較（7〜9月のときは 9月 と 8月）
+  const target = period === "all" ? MONTHS[MONTHS.length - 1] : period;
+  const prev = prevMonth(target);
+  if (prev) {
+    const a = statsFor(ds, [memberId], [prev]);
+    const b = statsFor(ds, [memberId], [target]);
+    const tag = `${monthLabel(target)}は`;
+    if (b.gets > a.gets) strengths.push(`${tag}前月よりGET数が増加（${a.gets}件 → ${b.gets}件）`);
+    if (b.gets < a.gets) improvements.push(`${tag}前月よりGET数が減少（${a.gets}件 → ${b.gets}件）`);
+    if (a.contractRate !== null && b.contractRate !== null) {
+      const d = (b.contractRate - a.contractRate) * 100;
+      if (d >= 5) strengths.push(`${tag}契約率が前月より${d.toFixed(1)}%上昇（${fmtPct(a.contractRate)} → ${fmtPct(b.contractRate)}）`);
+      if (d <= -5) improvements.push(`${tag}契約率が前月より${Math.abs(d).toFixed(1)}%低下（${fmtPct(a.contractRate)} → ${fmtPct(b.contractRate)}）`);
+    }
+    if (b.actions < a.actions * 0.85) improvements.push(`${tag}前月より行動数が減少（${a.actions}件 → ${b.actions}件）`);
+  }
+
+  return { strengths, improvements };
+}

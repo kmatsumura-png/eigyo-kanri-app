@@ -4,7 +4,7 @@ import MonthCompare from "@/components/MonthCompare";
 import { NoData, PageTitle, Section, StatusBadge } from "@/components/ui";
 import { MEMBERS, MEMBER_COLORS, MONTHS } from "@/lib/config";
 import { getData } from "@/lib/data";
-import { diagnose } from "@/lib/insights";
+import { diagnose, strengthReport } from "@/lib/insights";
 import { parsePeriod, periodParam } from "@/lib/kpi";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
       <PageTitle title="メンバー一覧（月別比較）" sub="7月・8月・9月と3か月平均を並べています。▲▼は前月より上がった／下がった印です。" />
       {MEMBERS.map((m) => {
         const d = diagnose(ds, m.id, MONTHS);
+        const sw = strengthReport(ds, m.id, "all");
         return (
           <Section
             key={m.id}
@@ -34,7 +35,17 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
               {d.main ? <StatusBadge status={d.main.status} /> : <StatusBadge status="良好" />}
               <span className="font-semibold">{d.headline}</span>
             </div>
-            <MonthCompare ds={ds} memberIds={[m.id]} />
+            <div className="mb-3 grid gap-1 text-sm sm:grid-cols-2">
+              <p>
+                <span className="font-semibold text-good">強み：</span>
+                {sw.strengths[0] ?? "—"}
+              </p>
+              <p>
+                <span className="font-semibold text-bad">改善点：</span>
+                {sw.improvements[0] ?? "—"}
+              </p>
+            </div>
+            <MonthCompare ds={ds} memberIds={[m.id]} money />
           </Section>
         );
       })}

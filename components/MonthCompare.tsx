@@ -21,12 +21,24 @@ const DETAIL: Item[] = [
   { label: "平均単価", get: (s) => fmtMan(s.unitPrice) },
 ];
 
-export default function MonthCompare({ ds, memberIds, detailed = false }: { ds: Dataset; memberIds: string[]; detailed?: boolean }) {
+const MONEY = DETAIL.filter((d) => d.label === "契約金額" || d.label === "平均単価");
+
+export default function MonthCompare({
+  ds,
+  memberIds,
+  detailed = false,
+  money = false,
+}: {
+  ds: Dataset;
+  memberIds: string[];
+  detailed?: boolean; // 打電・アポ・金額まで全部出す
+  money?: boolean; // 契約金額・平均単価だけ追加
+}) {
   const cols = [
     ...MONTHS.map((m, i) => ({ label: monthLabel(m), s: statsFor(ds, memberIds, [m]), prev: i > 0 ? statsFor(ds, memberIds, [MONTHS[i - 1]]) : null, avg: false })),
     { label: "3か月平均", s: monthlyAverage(statsFor(ds, memberIds, MONTHS)), prev: null, avg: true },
   ];
-  const items = detailed ? [...BASIC, ...DETAIL] : BASIC;
+  const items = detailed ? [...BASIC, ...DETAIL] : money ? [...BASIC, ...MONEY] : BASIC;
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {cols.map((c) => (

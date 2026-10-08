@@ -1,6 +1,7 @@
 // ① ダッシュボード：チーム全体の数字を見る画面
 import Link from "next/link";
 import { ActionVsGetChart, AmountChart, GetByMonthChart, RateByMonthChart } from "@/components/Charts";
+import MonthCompare from "@/components/MonthCompare";
 import Ranking from "@/components/Ranking";
 import { CommentList, KpiCard, NoData, PageTitle, Section } from "@/components/ui";
 import { MEMBERS, monthLabel } from "@/lib/config";
@@ -106,6 +107,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <Section title="メンバーランキング" desc="名前をクリックすると個人ページに移動します">
         <Ranking rows={rankRows(ds, months)} periodParam={pp} />
+      </Section>
+
+      <Section title="チームの月別推移" desc="5人合計。▲▼は前月より上がった／下がった印。3か月平均の契約率は「合計GET ÷ 合計行動」です">
+        <MonthCompare ds={ds} memberIds={ALL_IDS} money />
       </Section>
 
       <div className="grid gap-x-5 lg:grid-cols-2">
