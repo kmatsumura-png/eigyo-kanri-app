@@ -26,12 +26,13 @@ export default function ContractTable({ contracts, initialFilter = "all" }: { co
   ];
 
   return (
-    <div>
+    <div data-snap-root>
       <div className="mb-3 flex gap-1.5 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.k}
             onClick={() => setFilter(t.k)}
+            data-snap-btn={t.k}
             className={`shrink-0 rounded-md border px-3 py-1 text-sm ${filter === t.k ? "border-ink bg-ink text-white" : "border-line text-ink-2 hover:bg-bg"}`}
           >
             {t.label} <span className="num opacity-70">{t.n}</span>
@@ -78,7 +79,7 @@ export default function ContractTable({ contracts, initialFilter = "all" }: { co
                     </>
                   )}
                 </div>
-                <button onClick={() => setEditing(c)} className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:bg-bg">
+                <button data-snap-hide onClick={() => setEditing(c)} className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs text-ink-2 hover:bg-bg">
                   確認・修正
                 </button>
               </div>

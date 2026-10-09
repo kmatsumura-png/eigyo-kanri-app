@@ -25,18 +25,19 @@ export default function MeetingList({ meetings, initialMonth, showSales = false 
   const getCount = list.filter((m) => m.result === "GET").length;
 
   return (
-    <div>
+    <div data-snap-root>
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {[...MONTHS, "all"].map((m) => (
           <button
             key={m}
             onClick={() => setMonth(m)}
+            data-snap-btn={m}
             className={`rounded-md border px-3 py-1 text-sm ${month === m ? "border-ink bg-ink text-white" : "border-line text-ink-2 hover:bg-bg"}`}
           >
             {m === "all" ? "7〜9月" : monthLabel(m)}
           </button>
         ))}
-        <label className="ml-2 flex items-center gap-1.5 text-sm text-ink-2">
+        <label data-snap-hide className="ml-2 flex items-center gap-1.5 text-sm text-ink-2">
           <input type="checkbox" checked={onlyGet} onChange={(e) => setOnlyGet(e.target.checked)} />
           GETだけ
         </label>

@@ -35,12 +35,14 @@ export default function Ranking({ rows, periodParam }: { rows: RankRow[]; period
   );
 
   return (
-    <div>
+    // data-snap-* は「閲覧用コピー」を作るときの目印（アプリの動きには影響しません）
+    <div data-snap-root>
       <div className="mb-3 flex gap-1 overflow-x-auto" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.key}
             role="tab"
+            data-snap-btn={t.key}
             aria-selected={key === t.key}
             onClick={() => setKey(t.key)}
             className={`shrink-0 rounded-md border px-3 py-1.5 text-sm ${
