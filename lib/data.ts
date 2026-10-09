@@ -37,6 +37,7 @@ function applyEdit(c: Contract, e: ContractEdit | undefined): Contract {
   if (e.amount !== undefined && e.amount !== null) {
     out.amount = e.amount;
     out.amountStatus = "確定";
+    out.amountBasis = undefined;
     out.amountReason = "";
   }
   return out;

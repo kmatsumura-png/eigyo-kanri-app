@@ -43,6 +43,7 @@ export interface Stats {
   amount: number; // 確定した契約金額の合計
   amountCount: number; // 金額が確定している契約の件数
   pendingCount: number; // 金額要確認の契約の件数
+  directDebitCount: number; // 口座振替の契約の件数（金額は計上しない）
   pendingCandidate: number; // 要確認の候補金額の合計（参考）
   contractRows: number; // 案件一覧の契約行の数
   // ↓ 計算した率
@@ -70,6 +71,7 @@ export function statsFor(ds: Dataset, memberIds: string[], months: MonthKey[]): 
   const appts = sumOrNull(ks.map((k) => k.appts));
   const confirmed = cs.filter((c) => c.amountStatus === "確定" && c.amount !== null);
   const pending = cs.filter((c) => c.amountStatus === "要確認");
+  const directDebit = cs.filter((c) => c.amountStatus === "口座振替");
   const amount = confirmed.reduce((s, c) => s + (c.amount ?? 0), 0);
   return {
     months: months.length,
@@ -82,6 +84,7 @@ export function statsFor(ds: Dataset, memberIds: string[], months: MonthKey[]): 
     amount,
     amountCount: confirmed.length,
     pendingCount: pending.length,
+    directDebitCount: directDebit.length,
     pendingCandidate: pending.reduce((s, c) => s + (c.candidateAmount ?? 0), 0),
     contractRows: cs.length,
     contractRate: div(gets, actions),
@@ -106,6 +109,7 @@ export function monthlyAverage(s: Stats): Stats {
     amount: s.amount / n,
     amountCount: s.amountCount / n,
     pendingCount: s.pendingCount / n,
+    directDebitCount: s.directDebitCount / n,
     pendingCandidate: s.pendingCandidate / n,
     contractRows: s.contractRows / n,
   };

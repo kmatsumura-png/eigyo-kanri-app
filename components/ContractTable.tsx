@@ -6,7 +6,7 @@ import { monthLabel } from "@/lib/config";
 import { fmtDate, fmtYen } from "@/lib/format";
 import type { Contract } from "@/lib/types";
 
-type Filter = "all" | "pending" | "fixed" | "other";
+type Filter = "all" | "pending" | "fixed" | "debit" | "other";
 
 export default function ContractTable({ contracts, initialFilter = "all" }: { contracts: Contract[]; initialFilter?: Filter }) {
   const [filter, setFilter] = useState<Filter>(initialFilter);
@@ -16,11 +16,16 @@ export default function ContractTable({ contracts, initialFilter = "all" }: { co
   const list =
     filter === "other"
       ? others
-      : deals.filter((c) => filter === "all" || (filter === "pending" ? c.amountStatus === "要確認" : c.amountStatus === "確定"));
+      : deals.filter(
+          (c) =>
+            filter === "all" ||
+            (filter === "pending" ? c.amountStatus === "要確認" : filter === "debit" ? c.amountStatus === "口座振替" : c.amountStatus === "確定"),
+        );
 
   const tabs: { k: Filter; label: string; n: number }[] = [
     { k: "all", label: "契約すべて", n: deals.length },
     { k: "fixed", label: "金額確定", n: deals.filter((c) => c.amountStatus === "確定").length },
+    { k: "debit", label: "口座振替", n: deals.filter((c) => c.amountStatus === "口座振替").length },
     { k: "pending", label: "金額要確認", n: deals.filter((c) => c.amountStatus === "要確認").length },
     { k: "other", label: "マイナス計上・修正・メモ", n: others.length },
   ];
@@ -72,7 +77,15 @@ export default function ContractTable({ contracts, initialFilter = "all" }: { co
               <div className="flex items-center justify-between gap-3 sm:justify-end">
                 <div className="text-right">
                   {c.amountStatus === "確定" ? (
-                    <span className="num font-bold">{fmtYen(c.amount)}</span>
+                    <>
+                      <span className="num font-bold">{fmtYen(c.amount)}</span>
+                      {c.amountBasis === "標準価格" && <div className="text-xs text-ink-3">標準価格（備考に金額なし）</div>}
+                    </>
+                  ) : c.amountStatus === "口座振替" ? (
+                    <>
+                      <span className="rounded bg-[#e8f0fb] px-1.5 py-0.5 text-xs font-semibold text-accent">口座振替</span>
+                      <div className="text-xs text-ink-3">金額は計上しない</div>
+                    </>
                   ) : (
                     <>
                       <span className="rounded bg-[#fdf3e1] px-1.5 py-0.5 text-xs font-semibold text-warn">金額要確認</span>

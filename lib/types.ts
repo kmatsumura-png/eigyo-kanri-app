@@ -69,7 +69,8 @@ export interface Contract {
   productCategories: string[]; // 商品の分類（集計用）
   amount: number | null; // 契約金額（確定したものだけ。要確認なら null）
   candidateAmount: number | null; // 備考から読み取った候補金額
-  amountStatus: "確定" | "要確認";
+  amountStatus: "確定" | "要確認" | "口座振替"; // 口座振替＝契約数には入れるが金額は計上しない
+  amountBasis?: "備考" | "標準価格"; // 金額の決め方（備考の最終販売価格／価格表の標準価格）
   amountReason: string; // 要確認の理由
   points: number | null;
   discountCheck: string; // 値引きチェック

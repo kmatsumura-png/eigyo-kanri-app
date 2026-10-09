@@ -58,7 +58,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           value={fmtMan(s.amount)}
           sub={
             <>
-              金額確定 {s.amountCount}件
+              金額確定 {s.amountCount}件{s.directDebitCount > 0 && `・口座振替 ${s.directDebitCount}件`}
               {s.pendingCount > 0 && (
                 <>
                   ・<Link href={`/deals?tab=contracts&status=pending&period=${pp}`} className="text-warn underline">要確認 {s.pendingCount}件</Link>

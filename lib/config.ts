@@ -42,3 +42,20 @@ export const MEMBER_COLORS: Record<string, string> = {
   tsujimoto: "#eda100",
   hayasaka: "#e87ba4",
 };
+
+/**
+ * 標準価格（備考に販売金額が書かれていないときに使う価格表）
+ * ・上から順に判定します（30記事を15記事より先に書いています）
+ * ・from / until は「受注した月」で、価格が変わる時期を表します（YYYY-MM）
+ * ・値引きありの案件は、金額が書かれていなければ「要確認」にします
+ */
+export const PRICE_LIST: { name: string; pattern: RegExp; price: number; from?: string; until?: string }[] = [
+  { name: "ホームページ強化パックライト", pattern: /ホームページ強化パックライト/, price: 1100000 },
+  { name: "ブログ自動投稿30記事", pattern: /ブログ自動投稿\s*30記事/, price: 528000 },
+  { name: "ブログ自動投稿15記事・運用サポートサービス", pattern: /ブログ自動投稿\s*15記事|運用サポート/, price: 396000 },
+  { name: "AIホームページ（〜2026年9月）", pattern: /AIホームページ|AIHP/i, price: 396000, until: "2026-09" },
+  { name: "AIホームページ（2026年10月〜）", pattern: /AIホームページ|AIHP/i, price: 435600, from: "2026-10" },
+];
+
+/** この言葉が備考にあれば「口座振替」（契約数には入れるが、契約金額には計上しない） */
+export const DIRECT_DEBIT_PATTERN = /口振|口座振替/;

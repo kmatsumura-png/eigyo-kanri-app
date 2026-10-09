@@ -1,7 +1,7 @@
 // ============================================================
 // 備考欄の文章から「商品」と「最終販売価格」を読み取るルール
 // ============================================================
-import { OTHER_CATEGORY, PRODUCT_CATEGORIES } from "./config";
+import { DIRECT_DEBIT_PATTERN, OTHER_CATEGORY, PRICE_LIST, PRODUCT_CATEGORIES } from "./config";
 
 /** 全角数字・カンマなどを半角にそろえる */
 export function normalizeText(s: string): string {
@@ -33,8 +33,33 @@ export function isMultiProduct(product: string): boolean {
 export interface AmountResult {
   amount: number | null; // 確定した金額
   candidate: number | null; // 読み取れた候補（要確認のときの参考）
-  status: "確定" | "要確認";
+  status: "確定" | "要確認" | "口座振替";
   reason: string;
+  basis?: "備考" | "標準価格"; // 金額をどこから決めたか
+}
+
+/** 商品を「+」「・」で分けたときの各商品（無料サービスは除く） */
+function productParts(product: string): string[] {
+  return normalizeText(product)
+    .split(/[+・]/)
+    .map((p) => p.trim())
+    .filter((p) => p && !/[（(]サービス[）)]/.test(p));
+}
+
+/** 価格表から標準価格を出す。1つでも価格表にない商品があれば null */
+export function standardPrice(product: string, orderMonth: string): { price: number; missing: string[] } | null {
+  const parts = productParts(product);
+  if (!parts.length) return null;
+  let price = 0;
+  const missing: string[] = [];
+  for (const part of parts) {
+    const hit = PRICE_LIST.find(
+      (p) => p.pattern.test(part) && (!p.from || orderMonth >= p.from) && (!p.until || orderMonth <= p.until),
+    );
+    if (hit) price += hit.price;
+    else missing.push(part);
+  }
+  return { price, missing };
 }
 
 /**
@@ -43,7 +68,7 @@ export interface AmountResult {
  *   「80000円で販売」              → 80,000円
  * 機械的に判断すると間違えそうなものは「要確認」にして、金額を入れません。
  */
-export function parseAmount(memo: string, product: string, discountCheck: string): AmountResult {
+export function parseAmount(memo: string, product: string, discountCheck: string, orderMonth = ""): AmountResult {
   const text = normalizeText(memo);
   const pairs = [...text.matchAll(/(\d{4,})円?\s*→\s*(\d{4,})円/g)].map((m) => ({
     from: Number(m[1]),
@@ -58,18 +83,32 @@ export function parseAmount(memo: string, product: string, discountCheck: string
     reason,
   });
 
+  // 口座振替は金額を計上しない（契約数には入れる）
+  if (DIRECT_DEBIT_PATTERN.test(text)) {
+    return { amount: null, candidate: null, status: "口座振替", reason: "" };
+  }
+
   let candidate: number | null = null;
   if (pairs.length === 1) candidate = pairs[0].to;
   else if (pairs.length === 0 && singles.length === 1) candidate = singles[0];
 
-  if (/月額|口振|口座振替/.test(text)) {
-    return ng(candidate, "月額・口座振替の契約のため、契約金額を単純に計算できません");
+  if (/月額/.test(text)) {
+    return ng(candidate, "月額の契約のため、契約金額を単純に計算できません");
   }
   if (pairs.length > 1 || singles.length > 1) {
     return ng(null, "備考に金額が複数書かれています");
   }
   if (candidate === null) {
-    return ng(null, "備考に販売金額の記載がありません");
+    // 金額が書かれていなければ、価格表の標準価格を使う
+    if (/値引きあり/.test(discountCheck)) {
+      return ng(null, "「値引きあり」ですが、備考に販売金額の記載がありません");
+    }
+    const std = standardPrice(product, orderMonth);
+    if (!std) return ng(null, "備考に販売金額の記載がなく、商品も分かりません");
+    if (std.missing.length) {
+      return ng(null, `備考に販売金額の記載がなく、価格表にない商品があります（${std.missing.join("、")}）`);
+    }
+    return { amount: std.price, candidate: std.price, status: "確定", reason: "", basis: "標準価格" };
   }
   if (pairs.length === 1) {
     const { from, to } = pairs[0];
@@ -83,5 +122,5 @@ export function parseAmount(memo: string, product: string, discountCheck: string
   if (isMultiProduct(product)) {
     return ng(candidate, "複数商品のセット価格です。この金額で正しいか確認してください");
   }
-  return { amount: candidate, candidate, status: "確定", reason: "" };
+  return { amount: candidate, candidate, status: "確定", reason: "", basis: "備考" };
 }

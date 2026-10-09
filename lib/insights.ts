@@ -216,6 +216,9 @@ export function memberComments(ds: Dataset, memberId: string, period: Period): C
     if (r >= 1.1) out.push({ tone: "good", text: `平均単価 ${fmtMan(s.unitPrice)} はチーム平均（${fmtMan(t.unitPrice)}）より高いです。` });
     if (r < ISSUE_LINE) out.push({ tone: "bad", text: `平均単価 ${fmtMan(s.unitPrice)} はチーム平均（${fmtMan(t.unitPrice)}）より低いです。` });
   }
+  if (s.directDebitCount > 0) {
+    out.push({ tone: "neutral", text: `口座振替の契約が${s.directDebitCount}件あります（契約数には入っていますが、契約金額には計上していません）。` });
+  }
   if (s.pendingCount > 0) {
     out.push({ tone: "neutral", text: `契約${s.contractRows}件のうち${s.pendingCount}件は「金額要確認」のため、契約金額・平均単価に入っていません。` });
   }

@@ -50,7 +50,7 @@ export default async function MemberPage({
           tone={s.contractRate !== null && t.contractRate !== null && s.contractRate < t.contractRate * 0.85 ? "bad" : undefined}
           sub={vs(s.contractRate, t.contractRate, (v) => fmtPct(v))}
         />
-        <KpiCard label="契約金額" value={fmtMan(s.amount)} sub={`金額確定 ${s.amountCount}件${s.pendingCount ? `・要確認 ${s.pendingCount}件` : ""}`} />
+        <KpiCard label="契約金額" value={fmtMan(s.amount)} sub={`金額確定 ${s.amountCount}件${s.directDebitCount ? `・口座振替 ${s.directDebitCount}件` : ""}${s.pendingCount ? `・要確認 ${s.pendingCount}件` : ""}`} />
         <KpiCard label="平均単価" value={fmtMan(s.unitPrice)} sub={s.amountCount < 2 ? `金額確定 ${s.amountCount}件のみのため参考値` : vs(s.unitPrice, t.unitPrice, fmtMan)} />
         <KpiCard label="ポイント" value={fmtNum(s.points, s.points % 1 ? 1 : 0)} unit="pt" sub={vs(s.points, t.points, (v) => `${fmtNum(v, 1)}pt`)} />
       </div>

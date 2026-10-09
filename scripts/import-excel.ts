@@ -214,7 +214,7 @@ function readMonthly(file: string, month: MonthKey) {
 
     const amt =
       kind === "契約"
-        ? parseAmount(memo, product, discountCheck)
+        ? parseAmount(memo, product, discountCheck, ymd(r[1]).slice(0, 7))
         : {
             amount: null,
             candidate: null,
@@ -243,6 +243,7 @@ function readMonthly(file: string, month: MonthKey) {
       amount: amt.amount,
       candidateAmount: amt.candidate,
       amountStatus: amt.status,
+      amountBasis: amt.basis,
       amountReason: amt.reason,
       points,
       discountCheck,
@@ -373,6 +374,14 @@ function matchGets(meetings: Meeting[], contracts: Contract[], kpis: MonthlyKpi[
               c.product = productCategories(first).some((x) => x !== "その他") ? first : "";
               c.productCategories = c.product ? productCategories(c.product) : [];
               c.amountReason = "案件一覧にポイント・金額の記載がありません（行動予定表ではGET）";
+              if (c.product) {
+                const amt = parseAmount(c.memo, c.product, c.discountCheck, c.orderDate.slice(0, 7));
+                if (amt.status !== "要確認") {
+                  Object.assign(c, { amount: amt.amount, candidateAmount: amt.candidate, amountStatus: amt.status, amountBasis: amt.basis });
+                  c.amountReason = "";
+                  c.flags.push("案件一覧にポイントの記載がありません（行動予定表ではGET）");
+                }
+              }
               issues.push({
                 level: "要確認",
                 memberId: mem.id,
@@ -720,7 +729,10 @@ function main() {
 
   console.log("\n✅ 取り込み完了 → data/dataset.json");
   console.log(`  KPI: ${kpis.length}件 / 商談明細: ${meetings.length}件 / 案件: ${contracts.length}件`);
-  console.log(`  金額要確認: ${contracts.filter((c) => c.amountStatus === "要確認" && c.kind === "契約").length}件`);
+  const deals = contracts.filter((c) => c.kind === "契約");
+  console.log(
+    `  契約 ${deals.length}件：金額確定 ${deals.filter((c) => c.amountStatus === "確定").length}件（うち標準価格 ${deals.filter((c) => c.amountBasis === "標準価格").length}件）／口座振替 ${deals.filter((c) => c.amountStatus === "口座振替").length}件／金額要確認 ${deals.filter((c) => c.amountStatus === "要確認").length}件`,
+  );
   console.log(`  データ不一致: ${issues.filter((i) => i.level === "データ不一致").length}件 / 要確認: ${issues.filter((i) => i.level === "要確認").length}件`);
 }
 
