@@ -325,6 +325,116 @@ function readSchedule(file: string): Meeting[] {
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 }
 
+// ---------- GET の突き合わせ ----------
+/** 顧客名を比べやすくする（株式会社・【岡山】・空白などを取る） */
+function normName(s: string): string {
+  return s
+    .normalize("NFKC")
+    .replace(/【[^】]*】|※.*$|\(株\)|株式会社|株式會社|有限会社|合同会社|\s/g, "")
+    .toLowerCase();
+}
+function sameCustomer(a: string, b: string): boolean {
+  const x = normName(a);
+  const y = normName(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+}
+
+function matchGets(meetings: Meeting[], contracts: Contract[], kpis: MonthlyKpi[], issues: DataIssue[]) {
+  const matched = new Set<Contract>();
+  for (const mem of MEMBERS) {
+    for (const m of MONTHS) {
+      const gets = meetings.filter((x) => x.month === m && x.salesStaff === mem.name && x.result === "GET");
+      const k = kpis.find((x) => x.memberId === mem.id && x.month === m)!;
+      if (gets.length !== k.gets) {
+        issues.push({
+          level: "データ不一致",
+          memberId: mem.id,
+          month: m,
+          title: "行動予定表のGET件数と確定GET数が違います",
+          detail: `行動予定表で商談結果が「GET」の行: ${gets.length}件 ／ KPI確定版・営業管理システム: ${k.gets}件。`,
+        });
+      }
+      const next = MONTHS[MONTHS.indexOf(m) + 1];
+      for (const g of gets) {
+        const cand = contracts.filter((c) => c.salesStaff === mem.name && !matched.has(c) && sameCustomer(c.customerName, g.customerName));
+        // 同じ月の行を優先。なければ翌月に計上された行を探す
+        let rows = cand.filter((c) => c.month === m);
+        if (!rows.length && next) rows = cand.filter((c) => c.month === next && c.kind !== "マイナス計上").slice(0, 1);
+        rows = rows.filter((c) => c.kind === "契約" || c.kind === "メモ行");
+        if (rows.length) {
+          for (const c of rows) {
+            matched.add(c);
+            c.isGet = true;
+            c.getMeeting = `${g.date} ${g.customerName}`;
+            if (c.kind === "メモ行") {
+              // 案件一覧にはポイント・金額のない行しかないが、行動予定表では GET
+              c.kind = "契約";
+              const first = c.memo.split(/\r?\n/)[0].trim();
+              c.product = productCategories(first).some((x) => x !== "その他") ? first : "";
+              c.productCategories = c.product ? productCategories(c.product) : [];
+              c.amountReason = "案件一覧にポイント・金額の記載がありません（行動予定表ではGET）";
+              issues.push({
+                level: "要確認",
+                memberId: mem.id,
+                month: m,
+                title: `GET案件の金額・ポイントが未記入：${c.customerName}`,
+                detail: `行動予定表ではGET（${g.date}）ですが、案件一覧の行（${c.source}）に営業Pと金額がありません。`,
+              });
+            }
+          }
+        } else {
+          // 案件一覧に行がない GET は、金額要確認の契約として追加する
+          contracts.push({
+            id: `${m}_GET_${g.customerName}_${mem.name}`.replace(/\s+/g, ""),
+            month: m,
+            orderMonth: Number(m.slice(5, 7)),
+            orderDate: g.date,
+            recordDate: "",
+            customerName: g.customerName.replace(/【[^】]*】/g, "").trim(),
+            apoStaff: g.apoStaff,
+            salesStaff: mem.name,
+            team: "",
+            product: "",
+            productCategories: [],
+            amount: null,
+            candidateAmount: null,
+            amountStatus: "要確認",
+            amountReason: "案件一覧に載っていません（行動予定表ではGET）。商品・金額を確認してください",
+            points: null,
+            discountCheck: "",
+            memo: "",
+            kind: "契約",
+            flags: [],
+            source: g.source,
+            isGet: true,
+            getMeeting: `${g.date} ${g.customerName}`,
+          });
+          issues.push({
+            level: "要確認",
+            memberId: mem.id,
+            month: m,
+            title: `GETなのに案件一覧にない：${g.customerName}`,
+            detail: `行動予定表ではGET（${g.date}・${g.source}）ですが、${monthLabel(m)}・翌月の案件一覧に見当たりません。`,
+          });
+        }
+      }
+    }
+  }
+  // 案件一覧にあるが、行動予定表では GET になっていない行
+  for (const c of contracts) {
+    if (c.kind !== "契約" || c.isGet) continue;
+    c.isGet = false;
+    c.flags.push("行動予定表ではGETになっていません（追加購入・別商品、または記入漏れの可能性）");
+    issues.push({
+      level: "要確認",
+      memberId: idOf(c.salesStaff),
+      month: c.month,
+      title: `案件一覧にあるが行動予定表でGETになっていない：${c.customerName}`,
+      detail: `${c.source}（${c.product || "商品不明"}・${c.points ?? "—"}pt）。追加購入・別商品なら問題ありません。`,
+    });
+  }
+}
+
 // ---------- メイン ----------
 function main() {
   const files = findFiles();
@@ -495,6 +605,7 @@ function main() {
   }
 
   // 月別の評価基準ファイル
+  // ポイントは評価基準「総合ランキング」の有料商材ポイント（＝案件一覧の営業Pの合計）を基準にする
   const contracts: Contract[] = [];
   for (const m of MONTHS) {
     const mon = readMonthly(files.monthly[m], m);
@@ -505,25 +616,36 @@ function main() {
       const rowsOf = mon.contracts.filter((c) => c.salesStaff === mem.name);
       const plus = rowsOf.filter((c) => c.kind === "契約").reduce((s, c) => s + (c.points ?? 0), 0);
       const other = rowsOf.filter((c) => c.kind !== "契約").reduce((s, c) => s + (c.points ?? 0), 0);
-      if (paid !== undefined && paid !== k.points) {
+      if (paid === undefined) {
+        issues.push({
+          level: "要確認",
+          memberId: mem.id,
+          month: m,
+          title: "評価基準の「総合ランキング」にポイントがありません",
+          detail: `${k.sources["ポイント"] ?? "営業管理システム"}の値（${k.points}pt）を使っています。`,
+        });
+        continue;
+      }
+      if (paid !== k.points) {
         issues.push({
           level: "データ不一致",
           memberId: mem.id,
           month: m,
-          title: "ポイントが「営業管理システム」と「評価基準用数値集計」で違います",
-          detail: `営業管理システム: ${k.points}pt ／ 評価基準「総合ランキング」の有料商材ポイント: ${paid}pt。参考：案件一覧のプラス計上 ${plus}pt、マイナス計上・過去案件の修正 ${other > 0 ? "+" : ""}${other}pt。アプリでは営業管理システムの値を使っています。`,
+          title: "ポイントが「評価基準」と「KPI確定版・営業管理システム」で違います",
+          detail: `評価基準（有料商材ポイント）: ${paid}pt ／ KPI確定版・営業管理システム: ${k.points}pt。アプリでは評価基準の値を使っています。内訳：案件一覧のプラス計上 ${plus}pt、マイナス計上・過去案件の修正 ${other > 0 ? "+" : ""}${other}pt。`,
         });
       }
-      const n = rowsOf.filter((c) => c.kind === "契約").length;
-      if (n !== k.gets) {
+      if (plus + other !== paid) {
         issues.push({
-          level: "参考",
+          level: "要確認",
           memberId: mem.id,
           month: m,
-          title: "GET数と案件一覧の契約行数が違います",
-          detail: `GET数（営業管理システム）: ${k.gets}件 ／ 案件一覧の契約行: ${n}件。追加購入などで1回のGETが複数行になっている可能性があります。契約数はGET数を使っています。`,
+          title: "総合ランキングのポイントと案件一覧の合計が合いません",
+          detail: `総合ランキング: ${paid}pt ／ 案件一覧の営業Pの合計: ${plus + other}pt`,
         });
       }
+      k.points = paid;
+      k.sources["ポイント"] = `評価基準用数値集計 ${monthLabel(m)}「総合ランキング」の有料商材ポイント（案件一覧の営業Pの合計。マイナス計上を含む）`;
     }
   }
 
@@ -552,21 +674,9 @@ function main() {
 
   // 行動予定表
   const meetings = readSchedule(files.schedule);
-  for (const m of MONTHS) {
-    for (const mem of MEMBERS) {
-      const k = kpis.find((x) => x.memberId === mem.id && x.month === m)!;
-      const getRows = meetings.filter((x) => x.month === m && x.salesStaff === mem.name && x.result === "GET").length;
-      if (getRows !== k.gets) {
-        issues.push({
-          level: "参考",
-          memberId: mem.id,
-          month: m,
-          title: "行動予定表のGET件数と確定GET数が違います",
-          detail: `確定GET数: ${k.gets}件 ／ 行動予定表で商談結果が「GET」の行: ${getRows}件。行動予定表は商談の明細確認用で、数字の集計には使っていません。`,
-        });
-      }
-    }
-  }
+
+  // GET の明細は「行動予定表で商談結果が GET の行」を基準にし、案件一覧の行と1件ずつ突き合わせる
+  matchGets(meetings, contracts, kpis, issues);
 
   const sourceFiles: SourceFile[] = [
     ...(files.confirmed
@@ -574,7 +684,7 @@ function main() {
           {
             role: "① 確定KPI（最優先）",
             fileName: path.basename(files.confirmed),
-            used: "7〜9月の行動数・GET数・ポイント（営業管理システムと照合）",
+            used: "7〜9月の行動数・GET数（営業管理システムと照合）。ポイントは評価基準を使用",
           },
         ]
       : []),
@@ -586,12 +696,12 @@ function main() {
     ...MONTHS.map((m) => ({
       role: `② 評価基準 ${monthLabel(m)}`,
       fileName: path.basename(files.monthly[m]),
-      used: "「案件一覧」→ 契約案件・契約商品・契約金額（最終販売価格）・ポイント／「総合ランキング」→ ポイントの照合用",
+      used: "「総合ランキング」→ ポイント（有料商材ポイント。ポイントの基準）／「案件一覧」→ 契約案件・契約商品・契約金額（最終販売価格。金額の基準）",
     })),
     {
       role: "③ 商談の明細",
       fileName: path.basename(files.schedule),
-      used: "全シート → 商談日・顧客・アポ担当・営業担当・前確結果・商談結果など（明細表示用。集計には使っていません）",
+      used: "全シート → 商談日・顧客・アポ担当・営業担当・前確結果・商談結果など／商談結果が「GET」の行を、どの顧客がGETかの基準として案件一覧と突き合わせ",
     },
   ];
 

@@ -77,6 +77,8 @@ export interface Contract {
   kind: ContractKind;
   flags: string[]; // 注意点（重複の可能性 など）
   source: string;
+  isGet?: boolean; // 行動予定表の GET と一致したか（false = GET外の追加購入など）
+  getMeeting?: string; // 一致した行動予定表の GET（日付・顧客名）
   // ↓ 管理者が画面で修正した場合に入る
   edited?: boolean;
   adminNote?: string;

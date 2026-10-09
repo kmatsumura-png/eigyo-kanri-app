@@ -51,6 +51,7 @@ export default function ContractTable({ contracts, initialFilter = "all" }: { co
                   <span className="font-semibold">{c.customerName}</span>
                   {c.verified && <span className="rounded bg-[#e7f5e7] px-1.5 text-[11px] font-semibold text-good">確認済み</span>}
                   {c.edited && <span className="rounded bg-bg px-1.5 text-[11px] text-ink-2">手修正あり</span>}
+                  {c.isGet === false && <span className="rounded bg-[#fdf3e1] px-1.5 text-[11px] font-semibold text-warn">GET外</span>}
                 </div>
                 <div className="truncate text-xs text-ink-2">{c.kind === "契約" ? c.product : c.kind}</div>
                 <div className="text-xs text-ink-3">
